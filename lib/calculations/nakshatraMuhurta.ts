@@ -380,7 +380,11 @@ export function computeBaana(sunrise: Date, nextSunrise: Date): TimeInterval[] {
   return out;
 }
 
-export function computeAmritKalam(sunrise: Date, nextSunrise: Date): TimeInterval[] {
+/**
+ * @param localMidnight the local midnight that ends the calendar day of `sunrise`
+ *   (used to decide which windows are "overnight"). Falls back to the Muscat estimate.
+ */
+export function computeAmritKalam(sunrise: Date, nextSunrise: Date, localMidnight?: Date): TimeInterval[] {
   const dayStart = dateToJdn(sunrise);
   const dayEnd = dateToJdn(nextSunrise);
 
@@ -400,8 +404,9 @@ export function computeAmritKalam(sunrise: Date, nextSunrise: Date): TimeInterva
 
   // DrikPanchang suppresses overnight Amrit windows when a daytime window already exists,
   // unless the overnight window is within 50 min of next sunrise (like Swati on Jun24).
-  // For Muscat (UTC+4): local midnight ≈ 18h40m after sunrise ≈ dayStart + 0.778 JDN.
-  const OVERNIGHT_JDN = dayStart + 0.778;
+  // Overnight = after the local midnight ending the sunrise day. Without it we assume
+  // Muscat (UTC+4), where midnight ≈ 18h40m after sunrise ≈ dayStart + 0.778 JDN.
+  const OVERNIGHT_JDN = localMidnight ? dateToJdn(localMidnight) : dayStart + 0.778;
   const NEAR_SUNRISE_JDN = 50 / 1440;
 
   const daytime = out.filter(w => dateToJdn(w.start) <= OVERNIGHT_JDN);

@@ -3,7 +3,7 @@ import InfoDot from '@/components/ui/InfoDot';
 import MuhurtaPopup from '@/components/ui/MuhurtaPopup';
 import DateTag from '@/components/ui/DateTag';
 import ExpandSection from '@/components/ui/ExpandSection';
-import { formatTime, getPageDayEndMs } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { MUHURTA_INFO } from '@/lib/data/descriptions';
 
 function MuhurtaDot({ infoKey }: { infoKey: string }) {
@@ -50,6 +50,7 @@ const ORDER = [
 ];
 
 function BadRow({ infoKey, label, intervals, pageDate }: { infoKey: string; label: string; intervals: Interval[]; pageDate: string }) {
+  const { formatTime } = useTimeUtils();
   return (
     <div className="time-chip" style={{ alignItems: 'center', gap: '0.4rem' }}>
       <MuhurtaDot infoKey={infoKey} />
@@ -92,6 +93,7 @@ function mergeAdjacent(ivs: Interval[]): Interval[] {
 }
 
 export default function InauspiciousTime({ muhurta, pageDate, earlyMorningMuhurta }: Props) {
+  const { getPageDayEndMs } = useTimeUtils();
   return (
     <ExpandSection title="Inauspicious Time" accentColor="var(--inauspicious-text)">
       {ORDER.map(({ key, label }) => {

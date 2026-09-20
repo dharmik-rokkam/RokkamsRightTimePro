@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ExpandSection from '@/components/ui/ExpandSection';
 import DateTag from '@/components/ui/DateTag';
-import { formatTime, getPageDayEndMs } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { computeRankedSlots } from '@/lib/rankedSlots';
 
 const CLOSE_ALL = 'infodot:closeAll';
@@ -15,6 +15,7 @@ function rankClass(i: number) {
 interface Props { muhurta: Record<string, any>; panchangData: any; pageDate: string; }
 
 export default function RankingTime({ muhurta, panchangData, pageDate }: Props) {
+  const { formatTime, getPageDayEndMs } = useTimeUtils();
   const pageEndMs = getPageDayEndMs(pageDate);
   const nextSunriseMs = panchangData.sunMoonTimes?.nextSunrise
     ? new Date(panchangData.sunMoonTimes.nextSunrise).getTime()

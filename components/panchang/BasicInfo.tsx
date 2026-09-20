@@ -4,7 +4,8 @@ import TithiPopup from '@/components/ui/TithiPopup';
 import DateTag from '@/components/ui/DateTag';
 import MoonCycleTag from '@/components/ui/MoonCycleTag';
 import ExpandSection from '@/components/ui/ExpandSection';
-import { formatTime, stepDate, formatDateDisplay } from '@/lib/formatTime';
+import { stepDate, formatDateDisplay } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import {
   ELEMENT_TYPES, TITHIS, NAKSHATRAS, YOGAS, KARANAS, VARAS,
   type ScoredElement, type TithiScore,
@@ -29,6 +30,7 @@ const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
 // capped at the calendar-day boundary; startReal/endReal hold the actual cross
 // time (often on the prev/next day), and DateTag adds the "#" tag for those.
 function SlotTime({ slot, pageDate }: { slot: Slot; pageDate: string }) {
+  const { formatTime } = useTimeUtils();
   const startIso = slot.start ?? slot.startReal ?? null;
   const endIso = slot.end ?? slot.endReal ?? null;
   return (
@@ -122,6 +124,7 @@ function ElementRow({ label, labelDotKey, slots, getAusp, getPopup, valueText, p
 }
 
 function SunMoonRow({ label, iso, pageDate, prefixEl, noBorder }: { label: string; iso: string | null | undefined; pageDate: string; prefixEl?: React.ReactNode; noBorder?: boolean }) {
+  const { formatTime } = useTimeUtils();
   return (
     <div className="info-row" style={noBorder ? { borderBottom: 'none' } : undefined}>
       <div className="info-label">{label}</div>

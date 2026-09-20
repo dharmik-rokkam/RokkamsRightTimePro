@@ -18,6 +18,7 @@ import {
   computeVidalYoga,
 } from './nakshatraMuhurta';
 import type { PanchangData, Location } from '@/types/panchang';
+import { addDays, localDateString, localMidnightMs } from '../timezone';
 
 
 function getRiseSetTimes(date: Date, location: Location) {
@@ -62,8 +63,9 @@ export function computePanchang(date: Date, location: Location): PanchangData {
   const nakshatra = calculateNakshatra(siderealMoonLng);
   const yoga = calculateYoga(siderealSunLng, siderealMoonLng);
   const karana = calculateKarana(sunLng, moonLng);
-  const vara = calculateVara(date);
-  const samvat = calculateSamvat(date);
+  const tz = location.timezone;
+  const vara = calculateVara(date, tz);
+  const samvat = calculateSamvat(date, tz);
   const masaName = calculateMasaName(siderealSunLng);
   const moonSign = getMoonSign(siderealMoonLng);
   const surya = suryaNakshatra(siderealSunLng);
@@ -81,7 +83,8 @@ export function computePanchang(date: Date, location: Location): PanchangData {
   const nextSunrise = nextRiseSet.sunrise;
 
   // Compute all nakshatra-based timings from first principles — no web scraping
-  const amritKalam = computeAmritKalam(sunrise, nextSunrise);
+  const localMidnightEnd = new Date(localMidnightMs(addDays(localDateString(date, tz), 1), tz));
+  const amritKalam = computeAmritKalam(sunrise, nextSunrise, localMidnightEnd);
   const varjyam = computeVarjyam(sunrise, nextSunrise);
   const baana = computeBaana(sunrise, nextSunrise);
   const bhadra = computeBhadra(sunrise, nextSunrise);
@@ -91,13 +94,14 @@ export function computePanchang(date: Date, location: Location): PanchangData {
     sunrise,
     sunset,
     solarNoon,
-    date.getDay(),
+    vara.index,
     prevSunset,
     amritKalam,
     varjyam,
     baana,
     vidalYoga,
     bhadra,
+    nextSunrise,
   );
 
   return {

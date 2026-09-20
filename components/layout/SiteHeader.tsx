@@ -2,17 +2,22 @@
 import { useEffect, useState } from 'react';
 import DateNavigator from '@/components/panchang/DateNavigator';
 import { useTheme } from '@/lib/useTheme';
-import { getMuscatToday } from '@/lib/formatTime';
+import LocationPicker from './LocationPicker';
+import { useTimeUtils } from '@/lib/LocationContext';
+import type { Location } from '@/types/panchang';
 
 interface Props {
   dateStr: string;
   onDateChange: (d: string) => void;
   numRoot: number;
+  location: Location;
+  onLocationChange: (l: Location) => void;
 }
 
-export default function SiteHeader({ dateStr, onDateChange, numRoot }: Props) {
+export default function SiteHeader({ dateStr, onDateChange, numRoot, location, onLocationChange }: Props) {
   const { theme, toggle } = useTheme();
-  const today = getMuscatToday();
+  const { getToday } = useTimeUtils();
+  const today = getToday();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -49,17 +54,7 @@ export default function SiteHeader({ dateStr, onDateChange, numRoot }: Props) {
               }}>
               Rokkam&apos;s Right Time
             </span>
-            <span style={{
-              fontFamily: 'Cinzel, serif',
-              fontSize: 'clamp(0.52rem, 1.6vw, 0.68rem)',
-              color: 'var(--moonsilver-dim)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
-              flexShrink: 1,
-            }}>
-              Muscat, Oman
-            </span>
+            <LocationPicker location={location} onChange={onLocationChange} />
           </div>
 
           <button

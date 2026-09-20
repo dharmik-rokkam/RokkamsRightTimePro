@@ -3,25 +3,8 @@ import { computePanchang } from '@/lib/calculations/panchang';
 import { computeTransitions } from '@/lib/calculations/transitions';
 import { computeBusinessSlots } from '@/lib/businessMuhurta';
 import { fetchDrikInauspicious } from '@/lib/drikpanchang';
-import { MUSCAT } from '@/lib/location';
-
-function getUTCOffsetMinutes(date: Date, timezone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    timeZoneName: 'shortOffset',
-  }).formatToParts(date);
-  const tzStr = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT+0';
-  const match = tzStr.match(/GMT([+-]?)(\d+)?(?::(\d+))?/);
-  if (!match) return 0;
-  const sign = match[1] === '-' ? -1 : 1;
-  return sign * ((parseInt(match[2] ?? '0')) * 60 + parseInt(match[3] ?? '0'));
-}
-
-function localDateStringToUTC(dateStr: string, timezone: string): Date {
-  const noonUTC = new Date(dateStr + 'T12:00:00Z');
-  const offsetMin = getUTCOffsetMinutes(noonUTC, timezone);
-  return new Date(noonUTC.getTime() - offsetMin * 60000);
-}
+import { DEFAULT_LOCATION, sanitizeLocation } from '@/lib/location';
+import { addDays, localMidnightMs, zonedTimeToUtcMs } from '@/lib/timezone';
 
 function roundMin(d: Date | null | undefined): string | null {
   if (!d) return null;
@@ -92,31 +75,37 @@ function extractOverflowMuhurta(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { date: dateInput } = body;
+    const { date: dateInput, location: locationInput } = body;
 
     if (!dateInput || !/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
       return NextResponse.json({ error: 'date (YYYY-MM-DD) is required' }, { status: 400 });
     }
 
+    // No location in the request → Muscat, as before. A malformed one is rejected.
+    const location = locationInput == null ? DEFAULT_LOCATION : sanitizeLocation(locationInput);
+    if (!location) {
+      return NextResponse.json({ error: 'Invalid location' }, { status: 400 });
+    }
+
     const dateStr: string = dateInput;
-    const date = localDateStringToUTC(dateStr, MUSCAT.timezone);
+    // Noon on the city's calendar date
+    const date = new Date(zonedTimeToUtcMs(dateStr, 12, 0, location.timezone));
 
     if (isNaN(date.getTime())) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
     // computePanchang() handles all nakshatra muhurtas internally — no override needed
-    const data = computePanchang(date, MUSCAT);
+    const data = computePanchang(date, location);
 
-    // Compute element transition times for the full Muscat calendar day (midnight → midnight)
-    const offsetMin = getUTCOffsetMinutes(date, MUSCAT.timezone);
-    const midnightUTC = new Date(new Date(dateStr + 'T00:00:00Z').getTime() - offsetMin * 60000);
-    const nextMidnightUTC = new Date(midnightUTC.getTime() + 86400000);
+    // Compute element transition times for the full local calendar day (midnight → midnight)
+    const midnightUTC = new Date(localMidnightMs(dateStr, location.timezone));
+    const nextMidnightUTC = new Date(localMidnightMs(addDays(dateStr, 1), location.timezone));
     const transitions = computeTransitions(midnightUTC, nextMidnightUTC);
 
     // Previous day's panchang for early morning (midnight → this sunrise) overflow slots
     const yesterday = new Date(date.getTime() - 86400000);
-    const prevData = computePanchang(yesterday, MUSCAT);
+    const prevData = computePanchang(yesterday, location);
 
     const sunrise = data.sunMoonTimes.sunrise;
     const sunriseMs = sunrise.getTime();
@@ -126,14 +115,14 @@ export async function POST(req: NextRequest) {
     // The actual next sunrise is already computed inside computePanchang; expose it here
     // by re-computing tomorrow's sunrise time
     const tomorrow = new Date(date.getTime() + 86400000);
-    const tomorrowData = computePanchang(tomorrow, MUSCAT);
+    const tomorrowData = computePanchang(tomorrow, location);
     const nextSunriseDate = tomorrowData.sunMoonTimes.sunrise;
 
-    // Baana, Bhadra and Vidal Yoga come straight from DrikPanchang (Muscat) so they
+    // Baana, Bhadra and Vidal Yoga come straight from DrikPanchang (for the selected city) so they
     // match the source exactly. Cached 24h; falls back to [] if the fetch fails.
     // Only trust the scrape when it clearly succeeded; otherwise keep computePanchang's own
     // baana/bhadra/etc. so a blocked/failed fetch (common on serverless IPs) doesn't wipe them.
-    const drik = await fetchDrikInauspicious(sunrise, nextSunriseDate);
+    const drik = await fetchDrikInauspicious(sunrise, nextSunriseDate, dateStr, location);
     if (drik.ok) {
       data.muhurta.baana      = drik.baana;
       data.muhurta.bhadra     = drik.bhadra;
@@ -175,6 +164,7 @@ export async function POST(req: NextRequest) {
       },
       muhurta: muhurtaSer,
       specialYogas,
+      drikAvailable: drik.ok,
       transitions,
       earlyMorningSlots,
       earlyMorningMuhurta,

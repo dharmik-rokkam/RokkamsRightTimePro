@@ -1,16 +1,16 @@
-export const MUSCAT_TZ = 'Asia/Muscat';
+import { addDays, localMidnightMs } from './timezone';
 
-export function getTimingLocalDate(iso: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: MUSCAT_TZ }).format(new Date(iso));
+export function getTimingLocalDate(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(iso));
 }
 
-export function formatTime(iso: string | null | undefined): string {
+export function formatTime(iso: string | null | undefined, tz: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: MUSCAT_TZ,
+    timeZone: tz,
   });
 }
 
@@ -19,8 +19,9 @@ export function formatDateDisplay(dateStr: string): string {
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
 }
 
-export function getMuscatToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: MUSCAT_TZ }).format(new Date());
+/** Today's calendar date (YYYY-MM-DD) in the given timezone. */
+export function getTodayIn(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 }
 
 export function stepDate(dateStr: string, delta: number): string {
@@ -29,10 +30,9 @@ export function stepDate(dateStr: string, delta: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
-export function getPageDayEndMs(pageDate: string): number {
-  // Midnight (end of calendar day) in Muscat (UTC+4) = pageDate T20:00:00Z
-  const [y, m, d] = pageDate.split('-').map(Number);
-  return Date.UTC(y, m - 1, d, 20, 0, 0);
+/** End of the page's calendar day (= next local midnight) in the given timezone, as a UTC ms timestamp. */
+export function getPageDayEndMs(pageDate: string, tz: string): number {
+  return localMidnightMs(addDays(pageDate, 1), tz);
 }
 
 export function digitRoot(dateStr: string): number {

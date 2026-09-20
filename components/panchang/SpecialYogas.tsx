@@ -3,7 +3,7 @@ import InfoDot from '@/components/ui/InfoDot';
 import MuhurtaPopup from '@/components/ui/MuhurtaPopup';
 import DateTag from '@/components/ui/DateTag';
 import ExpandSection from '@/components/ui/ExpandSection';
-import { formatTime } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { SPECIAL_YOGA_INFO } from '@/lib/data/descriptions';
 
 function YogaDot({ infoKey }: { infoKey: string }) {
@@ -39,6 +39,7 @@ const ORDER = [
 ];
 
 function YogaRow({ infoKey, label, intervals, pageDate }: { infoKey: string; label: string; intervals: Interval[]; pageDate: string }) {
+  const { formatTime } = useTimeUtils();
   return (
     <div className="time-chip" style={{ alignItems: 'center', gap: '0.4rem' }}>
       <YogaDot infoKey={infoKey} />

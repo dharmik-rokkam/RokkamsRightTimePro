@@ -59,9 +59,13 @@ export function calculateMuhurta(
   baana: TimeInterval[] = [],
   vidalYoga: TimeInterval[] = [],
   bhadra: TimeInterval[] = [],
+  nextSunrise?: Date,
 ): MuhurtaResult {
   const dayMs = sunset.getTime() - sunrise.getTime();
   const muhurtaDurationMs = dayMs / 15;
+  // Night after this day's sunset. Sandhya, Godhuli and Nishita scale with it, so they
+  // change with latitude and season (falls back to a 24h day if next sunrise isn't given).
+  const nightMs = (nextSunrise ?? addMinutes(sunrise, 24 * 60)).getTime() - sunset.getTime();
 
   const rahuKalam = getPart(sunrise, sunset, RAHU_PART[dayOfWeek]);
   const gulikaKalam = getPart(sunrise, sunset, GULIKA_PART[dayOfWeek]);
@@ -92,13 +96,15 @@ export function calculateMuhurta(
     end: new Date(sunrise.getTime() + 8 * muhurtaDurationMs),
   };
 
+  // Godhuli lasts 1/30 of the night from sunset; Sandhyas last 1/10 of it (matches DrikPanchang
+  // across latitudes and seasons — the former fixed 20 / 63 minutes only fitted Muscat in June).
   const godhuliMuhurta: TimeInterval = {
-    start: addMinutes(sunset, -1),
-    end: addMinutes(sunset, 20),
+    start: sunset,
+    end: new Date(sunset.getTime() + nightMs / 30),
   };
 
   const pratahSandhya: TimeInterval = {
-    start: addMinutes(sunrise, -63),
+    start: new Date(sunrise.getTime() - nightMs / 10),
     end: sunrise,
   };
 
@@ -109,12 +115,10 @@ export function calculateMuhurta(
 
   const sayahanaSandhya: TimeInterval = {
     start: sunset,
-    end: addMinutes(sunset, 63),
+    end: new Date(sunset.getTime() + nightMs / 10),
   };
 
-  const nextSunriseApprox = addMinutes(sunrise, 24 * 60);
-  const nightMs2 = nextSunriseApprox.getTime() - sunset.getTime();
-  const nightMuhurtaMs2 = nightMs2 / 15;
+  const nightMuhurtaMs2 = nightMs / 15;
   const nishitaMuhurta: TimeInterval = {
     start: new Date(sunset.getTime() + 7 * nightMuhurtaMs2),
     end: new Date(sunset.getTime() + 8 * nightMuhurtaMs2),

@@ -1,10 +1,27 @@
-// Fetches Baana, Bhadra, Vidal Yoga, Varjyam and Dur Muhurtam timings directly
-// from DrikPanchang (Muscat). Called server-side from the /api/panchang route.
+// Fetches Baana, Bhadra, Vidal Yoga, Varjyam, Dur Muhurtam, Amrit Kalam and the special
+// yogas directly from DrikPanchang for the selected city (keyed on its geoname id).
+// Called server-side from the /api/panchang route.
 
-import type { TimeInterval } from '@/types/panchang';
+import type { Location, TimeInterval } from '@/types/panchang';
+import { addDays, zonedTimeToUtcMs } from './timezone';
 
-const GEO_ID = '287286'; // Muscat, Oman
-const TZ_HOURS = 4;      // UTC+4
+/** Lower-case, accent- and punctuation-free form, with HTML entities decoded. */
+function normalizeName(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** The page <title> names the city it was rendered for ("… Panchangam for Mumbai, Maharashtra, India"). */
+function pageIsForCity(html: string, city: string | undefined): boolean {
+  const want = normalizeName(city ?? '');
+  if (!want) return true; // nothing reliable to compare (e.g. non-Latin name)
+  const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? '';
+  return normalizeName(title).includes(want);
+}
 
 // ─── HTML helpers ────────────────────────────────────────────────────────────
 
@@ -83,9 +100,16 @@ function parseHHMM(s: string): number | null {
   return h * 60 + min;
 }
 
-/** Minutes-since-midnight on a given local calendar midnight (UTC Date). */
-function minutesToDate(minutes: number, midnight: Date): Date {
-  return new Date(midnight.getTime() + minutes * 60000);
+/** A panchang calendar day in a city's own timezone. */
+interface Day { dateStr: string; tz: string }
+
+/**
+ * The UTC instant at which the city's wall clock reads `minutes` after midnight on `day`
+ * (or on the following day). Read from the wall clock, not counted as elapsed time, so it
+ * stays right on the day daylight saving starts or ends.
+ */
+function at(day: Day, minutes: number, nextDay: boolean): Date {
+  return new Date(zonedTimeToUtcMs(nextDay ? addDays(day.dateStr, 1) : day.dateStr, Math.floor(minutes / 60), minutes % 60, day.tz));
 }
 
 /**
@@ -120,11 +144,10 @@ function findTimeTokens(raw: string): { mins: number; startPos: number; endPos: 
 // ─── Per-cell parsers ──────────────────────────────────────────────────────────
 
 /** Parse a single Baana value cell ("TYPE upto/from … / range"). */
-function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
+function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
   if (!raw || /^\s*(&nbsp;)?\s*$/.test(raw)) return [];
 
   const text = stripHtml(raw);
-  const nextMidnight = new Date(localMidnight.getTime() + 86400000);
 
   const typeMatch = text.match(/^([A-Za-z]+)\s+/);
   const label = typeMatch ? typeMatch[1] : undefined;
@@ -136,7 +159,7 @@ function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
     if (mins === null) return [];
     const posAfterTime = raw.indexOf(uptoM[1]) + uptoM[1].length;
     const isNextDay = nextDayDateFollows(raw.slice(posAfterTime));
-    const end = minutesToDate(mins, isNextDay ? nextMidnight : localMidnight);
+    const end = at(day, mins, isNextDay);
     const clipEnd = new Date(Math.min(end.getTime(), nextSunrise.getTime()));
     if (clipEnd <= sunrise) return [];
     return [{ start: sunrise, end: clipEnd, label }];
@@ -150,7 +173,7 @@ function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
       if (mins === null) return [];
       const posAfterTime = raw.indexOf(fromM[1]) + fromM[1].length;
       const isNextDay = nextDayDateFollows(raw.slice(posAfterTime));
-      const start = minutesToDate(mins, isNextDay ? nextMidnight : localMidnight);
+      const start = at(day, mins, isNextDay);
       const clipStart = new Date(Math.max(start.getTime(), sunrise.getTime()));
       if (clipStart >= nextSunrise) return [];
       return [{ start: clipStart, end: nextSunrise, label }];
@@ -165,8 +188,8 @@ function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
     if (startMins === null || endMins === null) return [];
     const t0pos = raw.indexOf(times[0][1]);
     const t1pos = raw.indexOf(times[1][1], t0pos + times[0][1].length);
-    const start = minutesToDate(startMins, nextDayDateFollows(raw.slice(t0pos - 5, t0pos + 100)) ? nextMidnight : localMidnight);
-    const end   = minutesToDate(endMins,   nextDayDateFollows(raw.slice(t1pos - 5, t1pos + 100)) ? nextMidnight : localMidnight);
+    const start = at(day, startMins, nextDayDateFollows(raw.slice(t0pos - 5, t0pos + 100)));
+    const end   = at(day, endMins,   nextDayDateFollows(raw.slice(t1pos - 5, t1pos + 100)));
     const clipStart = new Date(Math.max(start.getTime(), sunrise.getTime()));
     const clipEnd   = new Date(Math.min(end.getTime(),   nextSunrise.getTime()));
     if (clipEnd <= clipStart) return [];
@@ -182,11 +205,10 @@ function parseBaanaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
  * ("…, Jun 25") or "Full Night". Used for Vidaal Yoga, Varjyam, Bhadra,
  * Dur Muhurtam.
  */
-function parseRangeCell(raw: string, sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
+function parseRangeCell(raw: string, sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
   if (!raw || /^\s*(&nbsp;)?\s*$/.test(raw)) return [];
 
   const text = stripHtml(raw);
-  const nextMidnight = new Date(localMidnight.getTime() + 86400000);
   const toks = findTimeTokens(raw);
   if (toks.length === 0) return [];
 
@@ -195,7 +217,7 @@ function parseRangeCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
   // "Full Night" end → starts at first time, clips to nextSunrise
   if (/full\s*night/i.test(text)) {
     const t = toks[0];
-    const start = minutesToDate(t.mins, nextDayAfter(t.endPos, t.endPos + 220) ? nextMidnight : localMidnight);
+    const start = at(day, t.mins, nextDayAfter(t.endPos, t.endPos + 220));
     const clipStart = new Date(Math.max(start.getTime(), sunrise.getTime()));
     if (clipStart >= nextSunrise) return [];
     return [{ start: clipStart, end: nextSunrise }];
@@ -204,7 +226,7 @@ function parseRangeCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
   // "upto HH:MM" → started before sunrise, single end time
   if (/upto/i.test(text)) {
     const t = toks[0];
-    const end = minutesToDate(t.mins, nextDayAfter(t.endPos, t.endPos + 220) ? nextMidnight : localMidnight);
+    const end = at(day, t.mins, nextDayAfter(t.endPos, t.endPos + 220));
     const clipEnd = new Date(Math.min(end.getTime(), nextSunrise.getTime()));
     if (clipEnd <= sunrise) return [];
     return [{ start: sunrise, end: clipEnd }];
@@ -217,8 +239,8 @@ function parseRangeCell(raw: string, sunrise: Date, nextSunrise: Date, localMidn
     const a = toks[0], b = toks[1];
     const startNextDay = nextDayAfter(a.endPos, b.startPos);
     const endNextDay   = startNextDay || nextDayAfter(b.endPos, b.endPos + 220);
-    const start = minutesToDate(a.mins, startNextDay ? nextMidnight : localMidnight);
-    const end   = minutesToDate(b.mins, endNextDay   ? nextMidnight : localMidnight);
+    const start = at(day, a.mins, startNextDay);
+    const end   = at(day, b.mins, endNextDay  );
     if (end.getTime() <= start.getTime()) return [];
     return [{ start, end }];
   }
@@ -232,23 +254,23 @@ function sortByStart(ivs: TimeInterval[]): TimeInterval[] {
   return ivs.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-function parseBaana(values: string[], sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
-  return sortByStart(values.flatMap(v => parseBaanaCell(v, sunrise, nextSunrise, localMidnight)));
+function parseBaana(values: string[], sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
+  return sortByStart(values.flatMap(v => parseBaanaCell(v, sunrise, nextSunrise, day)));
 }
 
-function parseRange(values: string[], sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
-  return sortByStart(values.flatMap(v => parseRangeCell(v, sunrise, nextSunrise, localMidnight)));
+function parseRange(values: string[], sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
+  return sortByStart(values.flatMap(v => parseRangeCell(v, sunrise, nextSunrise, day)));
 }
 
 /** Special yogas use the range format, plus a "Whole Day" value → sunrise..nextSunrise. */
-function parseSpecialYogaCell(raw: string, sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
+function parseSpecialYogaCell(raw: string, sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
   if (!raw || /^\s*(&nbsp;)?\s*$/.test(raw)) return [];
   if (/whole\s*day|all\s*day|full\s*day/i.test(stripHtml(raw))) return [{ start: sunrise, end: nextSunrise }];
-  return parseRangeCell(raw, sunrise, nextSunrise, localMidnight);
+  return parseRangeCell(raw, sunrise, nextSunrise, day);
 }
 
-function parseSpecialYoga(values: string[], sunrise: Date, nextSunrise: Date, localMidnight: Date): TimeInterval[] {
-  return sortByStart(values.flatMap(v => parseSpecialYogaCell(v, sunrise, nextSunrise, localMidnight)));
+function parseSpecialYoga(values: string[], sunrise: Date, nextSunrise: Date, day: Day): TimeInterval[] {
+  return sortByStart(values.flatMap(v => parseSpecialYogaCell(v, sunrise, nextSunrise, day)));
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -263,29 +285,29 @@ export interface DrikSpecialYogas {
   raviPushya: TimeInterval[];
 }
 
+/**
+ * @param localDateStr the panchang's calendar date (YYYY-MM-DD) in the city's own timezone
+ */
 export async function fetchDrikInauspicious(
   sunrise: Date,
-  nextSunrise: Date
+  nextSunrise: Date,
+  localDateStr: string,
+  location: Location
 ): Promise<{ ok: boolean; baana: TimeInterval[]; bhadra: TimeInterval[]; vidalYoga: TimeInterval[]; varjyam: TimeInterval[]; durMuhurta: TimeInterval[]; amritKalam: TimeInterval[]; specialYogas: DrikSpecialYogas }> {
-  // Format the panchang date as DD/MM/YYYY in Muscat local time
-  const localDate = new Date(sunrise.getTime() + TZ_HOURS * 3600000);
-  const dd = localDate.getUTCDate().toString().padStart(2, '0');
-  const mm = (localDate.getUTCMonth() + 1).toString().padStart(2, '0');
-  const yyyy = localDate.getUTCFullYear();
+  // DrikPanchang takes the date as DD/MM/YYYY
+  const [yyyy, mm, dd] = localDateStr.split('-');
   const dateStr = `${dd}/${mm}/${yyyy}`;
 
-  // Local midnight of the panchang calendar day (UTC)
-  const localMidnight = new Date(
-    Date.UTC(localDate.getUTCFullYear(), localDate.getUTCMonth(), localDate.getUTCDate())
-    - TZ_HOURS * 3600000
-  );
+  const day: Day = { dateStr: localDateStr, tz: location.timezone };
 
   const emptySpecial: DrikSpecialYogas = { raviYoga: [], sarvarthaSiddhi: [], amritaSiddhi: [], dwipushkar: [], tripushkar: [], guruPushya: [], raviPushya: [] };
   const empty = { ok: false, baana: [], bhadra: [], vidalYoga: [], varjyam: [], durMuhurta: [], amritKalam: [], specialYogas: emptySpecial };
 
+  if (!location.geonameId) return empty;
+
   try {
     const res = await fetch(
-      `https://www.drikpanchang.com/panchang/day-panchang.html?geoname-id=${GEO_ID}&date=${dateStr}`,
+      `https://www.drikpanchang.com/panchang/day-panchang.html?geoname-id=${location.geonameId}&date=${dateStr}`,
       {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PanchangApp/1.0)' },
         next: { revalidate: 86400 },
@@ -295,25 +317,27 @@ export async function fetchDrikInauspicious(
     const html = await res.text();
     // Guard against blocked/captcha pages that return 200 but lack the panchang table.
     if (!/dpTableKey/.test(html) || !/Inauspicious Timings/i.test(html)) return empty;
+    // Guard against DrikPanchang serving a different city than the one we asked for.
+    if (!pageIsForCity(html, location.city)) return empty;
     const values = extractAllValues(html);
     const v = (label: string) => values.get(label) ?? [];
 
     return {
       ok: true,
-      baana:      parseBaana(v('Baana'), sunrise, nextSunrise, localMidnight),
-      bhadra:     parseRange(v('Bhadra'), sunrise, nextSunrise, localMidnight),
-      vidalYoga:  parseRange(v('Vidaal Yoga'), sunrise, nextSunrise, localMidnight),
-      varjyam:    parseRange(v('Varjyam'), sunrise, nextSunrise, localMidnight),
-      durMuhurta: parseRange(v('Dur Muhurtam'), sunrise, nextSunrise, localMidnight),
-      amritKalam: parseRange(v('Amrit Kalam'), sunrise, nextSunrise, localMidnight),
+      baana:      parseBaana(v('Baana'), sunrise, nextSunrise, day),
+      bhadra:     parseRange(v('Bhadra'), sunrise, nextSunrise, day),
+      vidalYoga:  parseRange(v('Vidaal Yoga'), sunrise, nextSunrise, day),
+      varjyam:    parseRange(v('Varjyam'), sunrise, nextSunrise, day),
+      durMuhurta: parseRange(v('Dur Muhurtam'), sunrise, nextSunrise, day),
+      amritKalam: parseRange(v('Amrit Kalam'), sunrise, nextSunrise, day),
       specialYogas: {
-        raviYoga:        parseSpecialYoga(v('Ravi Yoga'),            sunrise, nextSunrise, localMidnight),
-        sarvarthaSiddhi: parseSpecialYoga(v('Sarvartha Siddhi Yoga'), sunrise, nextSunrise, localMidnight),
-        amritaSiddhi:    parseSpecialYoga(v('Amrita Siddhi Yoga'),   sunrise, nextSunrise, localMidnight),
-        dwipushkar:      parseSpecialYoga(v('Dwipushkar Yoga'),      sunrise, nextSunrise, localMidnight),
-        tripushkar:      parseSpecialYoga(v('Tripushkar Yoga'),      sunrise, nextSunrise, localMidnight),
-        guruPushya:      parseSpecialYoga(v('Guru Pushya Yoga'),     sunrise, nextSunrise, localMidnight),
-        raviPushya:      parseSpecialYoga(v('Ravi Pushya Yoga'),     sunrise, nextSunrise, localMidnight),
+        raviYoga:        parseSpecialYoga(v('Ravi Yoga'),            sunrise, nextSunrise, day),
+        sarvarthaSiddhi: parseSpecialYoga(v('Sarvartha Siddhi Yoga'), sunrise, nextSunrise, day),
+        amritaSiddhi:    parseSpecialYoga(v('Amrita Siddhi Yoga'),   sunrise, nextSunrise, day),
+        dwipushkar:      parseSpecialYoga(v('Dwipushkar Yoga'),      sunrise, nextSunrise, day),
+        tripushkar:      parseSpecialYoga(v('Tripushkar Yoga'),      sunrise, nextSunrise, day),
+        guruPushya:      parseSpecialYoga(v('Guru Pushya Yoga'),     sunrise, nextSunrise, day),
+        raviPushya:      parseSpecialYoga(v('Ravi Pushya Yoga'),     sunrise, nextSunrise, day),
       },
     };
   } catch {

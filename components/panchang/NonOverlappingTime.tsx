@@ -3,7 +3,7 @@ import InfoDot from '@/components/ui/InfoDot';
 import PopupContent from '@/components/ui/PopupContent';
 import DateTag from '@/components/ui/DateTag';
 import ExpandSection from '@/components/ui/ExpandSection';
-import { formatTime, getPageDayEndMs } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { MUHURTA_INFO } from '@/lib/data/descriptions';
 
 function MuhurtaDot({ infoKey, cutLines }: { infoKey: string; cutLines?: string[] }) {
@@ -117,6 +117,7 @@ function mergeAdjacent(ivs: Interval[]): Interval[] {
 }
 
 export default function NonOverlappingTime({ muhurta, pageDate, earlyMorningMuhurta }: Props) {
+  const { formatTime, getPageDayEndMs } = useTimeUtils();
   const pageEndMs = getPageDayEndMs(pageDate);
 
   const rawBad: Interval[] = [];

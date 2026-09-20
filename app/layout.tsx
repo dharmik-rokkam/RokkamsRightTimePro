@@ -19,8 +19,8 @@ const crimsonText = Crimson_Text({
 
 export const metadata: Metadata = {
   title: "Rokkam's Right Time",
-  description: 'Daily Auspicious Timings - Muscat, Oman',
-  keywords: ['panchang', 'muscat', 'oman', 'tithi', 'nakshatra', 'rahu kalam', 'muhurta', 'hindu calendar'],
+  description: 'Daily Auspicious Timings for your city',
+  keywords: ['panchang', 'tithi', 'nakshatra', 'rahu kalam', 'muhurta', 'hindu calendar'],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

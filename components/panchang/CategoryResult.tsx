@@ -5,7 +5,7 @@ import ExpandSection from '@/components/ui/ExpandSection';
 import InfoDot from '@/components/ui/InfoDot';
 import { MiniPopup } from '@/components/ui/PopupContent';
 import DateTag from '@/components/ui/DateTag';
-import { formatTime, getPageDayEndMs } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { computeCategorySlots, type CategoryDef, type CategorySlot } from '@/lib/categoryScore';
 
 const CLOSE_ALL = 'infodot:closeAll';
@@ -158,6 +158,7 @@ interface Props {
 }
 
 export default function CategoryResult({ category, transitions, muhurta, specialYogas, varaName, paksha, pageDate, earlyMorningMuhurta }: Props) {
+  const { formatTime, getPageDayEndMs } = useTimeUtils();
   const pageEndMs = getPageDayEndMs(pageDate);
   const mergedMuhurta = mergeMuhurta(muhurta, earlyMorningMuhurta);
   const slots = computeCategorySlots({

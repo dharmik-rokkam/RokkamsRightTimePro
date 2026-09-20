@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { formatDateDisplay, getMuscatToday, stepDate } from '@/lib/formatTime';
+import { formatDateDisplay, stepDate } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 import { ScrollColumn } from './ScrollPicker';
 
 interface Props { dateStr: string; onChange: (d: string) => void; }
@@ -38,7 +39,8 @@ const btnStyle: React.CSSProperties = {
 };
 
 export default function DateNavigator({ dateStr, onChange }: Props) {
-  const today = getMuscatToday();
+  const { getToday } = useTimeUtils();
+  const today = getToday();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });

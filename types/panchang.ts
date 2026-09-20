@@ -4,6 +4,10 @@ export interface Location {
   name: string;
   timezone: string;
   elevation?: number;
+  /** DrikPanchang / GeoNames id; the scrape is keyed on it. */
+  geonameId?: number;
+  /** City name alone (name is the full "City, Region, Country" label). */
+  city?: string;
 }
 
 export type Region = 'telugu' | 'tamil' | 'north';

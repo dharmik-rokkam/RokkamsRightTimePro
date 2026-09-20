@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getTimingLocalDate, formatDateDisplay } from '@/lib/formatTime';
+import { formatDateDisplay } from '@/lib/formatTime';
+import { useTimeUtils } from '@/lib/LocationContext';
 
 const CLOSE_ALL = 'infodot:closeAll';
 
@@ -116,6 +117,7 @@ function DateTagInner({ formattedDate }: { formattedDate: string }) {
 }
 
 export default function DateTag({ iso, pageDate }: { iso: string | null | undefined; pageDate: string }) {
+  const { getTimingLocalDate } = useTimeUtils();
   if (!iso) return null;
   const timingDate = getTimingLocalDate(iso);
   if (timingDate === pageDate) return null;
